@@ -1,0 +1,62 @@
+{
+  "name": "kiwi-terminal",
+  "productName": "Kiwi Terminal",
+  "version": "1.0.0",
+  "description": "Kiwi Terminal - macOS Tahoe style terminal for Windows",
+  "author": "Kiwi",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.kiwi.terminal",
+    "productName": "Kiwi Terminal",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "renderer.js",
+      "package.json",
+      "node_modules/**/*",
+      "fonts/**/*",
+      "build/icon.ico"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Kiwi Terminal"
+    },
+    "npmRebuild": false
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0"
+  }
+}
