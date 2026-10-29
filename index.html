@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kiwi Terminal</title>
+  <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
+  <style>
+    /* Шрифты из папки fonts рядом с проектом */
+    @font-face {
+      font-family: "KiwiSans";
+      src: url("fonts/SF-Pro-Display-Regular.otf") format("opentype"),
+            url("SF-Pro-Display-Regular.otf") format("opentype");
+      font-weight: 400;
+    }
+    @font-face {
+      font-family: "KiwiSans";
+      src: url("fonts/SF-Pro-Display-Bold.otf") format("opentype"),
+            url("SF-Pro-Display-Bold.otf") format("opentype");
+      font-weight: 700;
+    }
+    @font-face {
+      font-family: "KiwiMono";
+      src: url("fonts/SF-Mono-Regular.otf") format("opentype"),
+            url("SF-Mono-Regular.otf") format("opentype");
+      font-weight: 400;
+    }
+    @font-face {
+      font-family: "KiwiMono";
+      src: url("fonts/SF-Mono-Bold.otf") format("opentype"),
+            url("SF-Mono-Bold.otf") format("opentype");
+      font-weight: 700;
+    }
+
+    html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+    body { font-family: "KiwiSans", "SF Pro Display", "SF Pro Text", "Segoe UI Variable Display", "Segoe UI", sans-serif; }
+
+    /* ---------- цвета шапки (меняй тут) ---------- */
+    :root {
+      --header-bg: #3a3f47;
+      --header-border: rgba(0, 0, 0, 0.35);
+      --header-text: rgba(255, 255, 255, 0.88);
+      --header-text-inactive: rgba(255, 255, 255, 0.4);
+      --dot-inactive: #5a5f68;
+      --tabbar-bg: #32363d;
+      --tab-active-bg: rgba(41, 46, 55, 0.96);
+      --tab-text: rgba(255, 255, 255, 0.55);
+      --tab-text-active: rgba(255, 255, 255, 0.92);
+      /* светло-серый вариант как в macOS:
+         --header-bg: #ececee; --header-border: rgba(0,0,0,0.12);
+         --header-text: #1d1d1f; --header-text-inactive: rgba(0,0,0,0.4);
+         --dot-inactive: #d2d4d8; */
+    }
+
+    /* ---------- окно ---------- */
+    #window {
+      position: fixed;
+      inset: 36px;                         /* поле под тень */
+      display: flex;
+      flex-direction: column;
+      border-radius: 18px;
+      background: rgba(41, 46, 55, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(0, 0, 0, 0.6);
+      overflow: hidden;
+    }
+    body.maximized #window { inset: 0; border-radius: 0; border: none; box-shadow: none; }
+
+    /* ---------- заголовок ---------- */
+    #titlebar {
+      position: relative;
+      height: 38px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      padding: 0 15px;
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--header-border);
+      user-select: none;
+    }
+
+    /* кнопки macOS */
+    #buttons { display: flex; gap: 5px; position: relative; z-index: 2; }
+    .dot {
+      width: 13px; height: 13px; border-radius: 50%;
+      border: 0.5px solid rgba(0, 0, 0, 0.25);
+      padding: 0; margin: 0; cursor: default;
+      display: flex; align-items: center; justify-content: center;
+      outline: none;
+    }
+    .dot svg { pointer-events: none; width: 9px; height: 9px; opacity: 0; fill: none; stroke: rgba(0,0,0,0.6);
+               stroke-width: 1.4; stroke-linecap: round; }
+    .dot svg .f { fill: rgba(0,0,0,0.6); stroke: none; }
+    #buttons:hover .dot svg { opacity: 1; }          /* значки при наведении */
+    .close { background: #ff5f57; }
+    .min   { background: #febc2e; }
+    .max   { background: #28c840; }
+    .dot:active { filter: brightness(0.8); }
+    body.inactive #buttons:not(:hover) .dot { background: var(--dot-inactive); border-color: rgba(0,0,0,0.12); }
+
+    #title {
+      flex: 1; min-width: 0;
+      display: flex; align-items: center; justify-content: flex-start; gap: 7px;
+      margin-left: 16px;
+      font-size: 13px; font-weight: 700; color: var(--header-text);
+      white-space: nowrap; overflow: hidden;
+      pointer-events: none;
+    }
+    body.inactive #title { color: var(--header-text-inactive); }
+
+    /* иконка настроек */
+    #settings-btn {
+      position: relative; z-index: 2;
+      width: 28px; height: 26px; padding: 0; margin-left: 8px;
+      border: none; border-radius: 7px; background: transparent;
+      color: var(--header-text); opacity: 0.75;
+      display: flex; align-items: center; justify-content: center;
+      cursor: default; outline: none;
+    }
+    #settings-btn:hover, #settings-btn.open { background: rgba(255, 255, 255, 0.12); opacity: 1; }
+    #settings-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2;
+                        stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+    body.inactive #settings-btn { opacity: 0.4; }
+
+    /* кнопки Windows */
+    #win-controls { display: none; height: 100%; margin-left: 6px; position: relative; z-index: 2; }
+    .wbtn {
+      width: 46px; height: 100%; padding: 0; border: none; background: transparent;
+      color: var(--header-text);
+      display: flex; align-items: center; justify-content: center;
+      cursor: default; outline: none;
+    }
+    .wbtn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; pointer-events: none; }
+    .wbtn .restore { display: none; }
+    body.maximized .wbtn .square { display: none; }
+    body.maximized .wbtn .restore { display: block; }
+    .wbtn:hover { background: rgba(255, 255, 255, 0.1); }
+    .wbtn.wclose:hover { background: #e81123; color: #ffffff; }
+    body.inactive .wbtn { color: var(--header-text-inactive); }
+
+    body.btn-windows #buttons { display: none; }
+    body.btn-windows #win-controls { display: flex; }
+    body.btn-windows #titlebar { padding-right: 0; }
+    body.btn-windows #title { margin-left: 0; }
+    body.btn-windows #settings-btn { margin-right: 4px; }
+
+    /* ---------- вкладки ---------- */
+    #tabbar {
+      display: flex; align-items: flex-end; gap: 2px;
+      height: 32px; flex-shrink: 0; padding: 4px 8px 0;
+      background: var(--tabbar-bg);
+      user-select: none;
+    }
+    #tabs { flex: 1; display: flex; align-items: flex-end; gap: 2px; min-width: 0; overflow: hidden; }
+    .tab {
+      position: relative; display: flex; align-items: center; justify-content: center;
+      flex: 1 1 0; min-width: 48px; height: 28px; box-sizing: border-box;
+      padding: 0 26px; border-radius: 8px 8px 0 0;
+      color: var(--tab-text); font-size: 12px; cursor: default;
+    }
+    .tab:hover { background: rgba(255, 255, 255, 0.06); }
+    .tab.active { background: var(--tab-active-bg); color: var(--tab-text-active); }
+    .tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tab-close {
+      position: absolute; right: 5px; top: 5px;
+      width: 18px; height: 18px; padding: 0; border: none; border-radius: 5px;
+      background: transparent; color: inherit; opacity: 0;
+      display: flex; align-items: center; justify-content: center;
+      cursor: default; outline: none; flex-shrink: 0;
+    }
+    .tab-close svg { width: 8px; height: 8px; fill: none; stroke: currentColor; stroke-width: 1.4;
+                     stroke-linecap: round; pointer-events: none; }
+    .tab:hover .tab-close, .tab.active .tab-close { opacity: 0.8; }
+    .tab-close:hover { background: rgba(255, 255, 255, 0.16); opacity: 1; }
+    .tbtn {
+      width: 26px; height: 24px; margin-bottom: 2px; padding: 0; flex-shrink: 0;
+      border: none; border-radius: 6px; background: transparent;
+      color: var(--tab-text-active); opacity: 0.7;
+      display: flex; align-items: center; justify-content: center;
+      cursor: default; outline: none;
+    }
+    .tbtn:hover { background: rgba(255, 255, 255, 0.1); opacity: 1; }
+    .tbtn svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5;
+                stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+
+    #tab-menu {
+      display: none; position: absolute; z-index: 30; min-width: 150px; padding: 5px;
+      border-radius: 10px; background: rgba(48, 53, 62, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      color: #e6e8ec; font-size: 13px;
+    }
+    #tab-menu.open { display: block; }
+    #tab-menu button {
+      display: block; width: 100%; text-align: left; padding: 6px 10px;
+      border: none; border-radius: 6px; background: transparent;
+      color: inherit; font: inherit; cursor: default; outline: none;
+    }
+    #tab-menu button:hover { background: rgba(255, 255, 255, 0.1); }
+
+    /* ---------- панель настроек ---------- */
+    #settings-panel {
+      display: none;
+      position: absolute; top: 44px; right: 12px; width: 270px;
+      padding: 14px; border-radius: 12px; z-index: 30;
+      background: rgba(48, 53, 62, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      color: #e6e8ec; font-size: 13px;
+    }
+    #settings-panel.open { display: block; }
+    .sp-title { font-weight: 700; margin-bottom: 12px; }
+    .sp-row { margin-bottom: 14px; }
+    .sp-row:last-child { margin-bottom: 0; }
+    .sp-label { font-size: 12px; opacity: 0.65; margin-bottom: 6px; }
+    .seg { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: rgba(0, 0, 0, 0.28); }
+    .seg button {
+      flex: 1; padding: 5px 0; border: none; border-radius: 6px; background: transparent;
+      color: inherit; font: inherit; cursor: default; outline: none;
+    }
+    .seg button:hover { background: rgba(255, 255, 255, 0.07); }
+    .seg button.active { background: rgba(255, 255, 255, 0.18); font-weight: 700; }
+    .sp-hint { font-size: 11px; opacity: 0.5; margin-top: 7px; }
+
+    /* ---------- терминал ---------- */
+    #term-wrap { position: relative; flex: 1; min-height: 0; }
+    #term { position: absolute; inset: 0 10px 12px 13px; }
+    .xterm-viewport { background-color: transparent !important; }
+    .tab-term { position: absolute; inset: 0; display: none; }
+
+    /* убираем полосу прокрутки */
+    .xterm .xterm-viewport { scrollbar-width: none; }
+    .xterm .xterm-viewport::-webkit-scrollbar { display: none; width: 0; height: 0; }
+    .xterm .scrollbar, .xterm .xterm-scrollable-element > .scrollbar { display: none !important; }
+
+    /* ---------- ручки изменения размера ---------- */
+    .rz { position: absolute; z-index: 10; }
+    body.maximized .rz { display: none; }
+    .rz.n  { top: 0; left: 14px; right: 14px; height: 5px; cursor: ns-resize; }
+    .rz.s  { bottom: 0; left: 14px; right: 14px; height: 5px; cursor: ns-resize; }
+    .rz.w  { left: 0; top: 14px; bottom: 14px; width: 5px; cursor: ew-resize; }
+    .rz.e  { right: 0; top: 14px; bottom: 14px; width: 5px; cursor: ew-resize; }
+    .rz.nw { top: 0; left: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+    .rz.se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+    .rz.ne { top: 0; right: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+    .rz.sw { bottom: 0; left: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+  </style>
+</head>
+<body>
+  <div id="window">
+    <div id="titlebar">
+      <div id="buttons">
+        <button class="dot close" id="btn-close" tabindex="-1">
+          <svg viewBox="0 0 10 10"><path d="M2.2 2.2l5.6 5.6M7.8 2.2L2.2 7.8"/></svg>
+        </button>
+        <button class="dot min" id="btn-min" tabindex="-1">
+          <svg viewBox="0 0 10 10"><path d="M1.8 5h6.4"/></svg>
+        </button>
+        <button class="dot max" id="btn-max" tabindex="-1">
+          <svg viewBox="0 0 10 10"><path class="f" d="M1.8 1.8h4.6L1.8 6.4zM8.2 8.2H3.6l4.6-4.6z"/></svg>
+        </button>
+      </div>
+      <div id="title">
+        <svg width="17" height="14" viewBox="0 0 17 14"><defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7cd0ff"/><stop offset="1" stop-color="#2e91f2"/></linearGradient></defs><path d="M1 2.4A1.4 1.4 0 0 1 2.4 1h3.7c.4 0 .8.2 1.1.5L8 2.3h6.6A1.4 1.4 0 0 1 16 3.7v8a1.4 1.4 0 0 1-1.4 1.3H2.4A1.4 1.4 0 0 1 1 11.6z" fill="url(#fg)"/></svg>
+        <span id="title-text">Kiwi Terminal</span>
+      </div>
+
+      <button id="settings-btn" tabindex="-1" title="Настройки">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+
+      <div id="win-controls">
+        <button class="wbtn" id="wbtn-min" tabindex="-1"><svg viewBox="0 0 10 10"><path d="M0 5.5h10"/></svg></button>
+        <button class="wbtn" id="wbtn-max" tabindex="-1">
+          <svg class="square" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+          <svg class="restore" viewBox="0 0 10 10"><path d="M2.5 2.5V.5h7v7h-2M.5 2.5h7v7h-7z"/></svg>
+        </button>
+        <button class="wbtn wclose" id="wbtn-close" tabindex="-1"><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></button>
+      </div>
+    </div>
+
+    <div id="tabbar">
+      <div id="tabs"></div>
+      <button class="tbtn" id="new-tab" tabindex="-1" title="Новая вкладка (Ctrl+Shift+T)">
+        <svg viewBox="0 0 12 12"><path d="M6 1.5v9M1.5 6h9"/></svg>
+      </button>
+      <button class="tbtn" id="tab-menu-btn" tabindex="-1" title="Выбрать оболочку">
+        <svg viewBox="0 0 12 12"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+      </button>
+    </div>
+
+    <div id="term-wrap"><div id="term"></div></div>
+
+    <div id="settings-panel">
+      <div class="sp-title">Настройки терминала</div>
+      <div class="sp-row">
+        <div class="sp-label">Оболочка по умолчанию</div>
+        <div class="seg" data-setting="shell">
+          <button data-value="powershell">PowerShell</button>
+          <button data-value="cmd">cmd</button>
+        </div>
+        <div class="sp-hint">Используется для новых вкладок</div>
+      </div>
+      <div class="sp-row">
+        <div class="sp-label">Кнопки окна</div>
+        <div class="seg" data-setting="buttons">
+          <button data-value="mac">macOS</button>
+          <button data-value="windows">Windows</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-menu">
+      <button data-shell="powershell">PowerShell</button>
+      <button data-shell="cmd">cmd</button>
+    </div>
+
+    <div class="rz n" data-dir="n"></div>
+    <div class="rz s" data-dir="s"></div>
+    <div class="rz w" data-dir="w"></div>
+    <div class="rz e" data-dir="e"></div>
+    <div class="rz nw" data-dir="nw"></div>
+    <div class="rz ne" data-dir="ne"></div>
+    <div class="rz sw" data-dir="sw"></div>
+    <div class="rz se" data-dir="se"></div>
+  </div>
+
+  <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
