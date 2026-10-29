@@ -22,10 +22,9 @@
       "index.html",
       "renderer.js",
       "package.json",
-      "build/icon.ico",
-      "*.otf",
-      "*.ttf",
-      "fonts/**/*"
+      "node_modules/**/*",
+      "fonts/**/*",
+      "build/icon.ico"
     ],
     "asarUnpack": [
       "node_modules/node-pty/**"
